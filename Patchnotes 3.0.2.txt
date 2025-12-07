@@ -1,0 +1,13 @@
+
+🎉 Patch Notes for Version 3.0.2
+
+Version: 3.0.2
+Build: 2025.04.20.261
+Previous Version: 3.0.1
+Previous Build: 2025.04.20.246
+📋 Summary
+
+- Fixed bug that series could not be requested (Failed: 500 - {"message":"Cannot read properties of undefined (reading 'filter')"})
+
+Thank you for using the Overseerr Telegram Bot! 🎬📱
+If you have any questions or feedback, feel free to reach out!
