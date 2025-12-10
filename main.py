@@ -53,6 +53,36 @@ from overseerr_api import (
     get_user_notification_settings, update_telegram_settings_for_user
 )
 
+# ==============================================================================
+# HELPER: SEND WELCOME MESSAGE
+# ==============================================================================
+async def send_welcome_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_thread_id: Optional[int] = None, show_login_button: bool = False):
+    """
+    Centralized function to generate and send the welcome message.
+    """
+    # Version Check (Async)
+    latest_ver = await get_latest_version_from_github()
+    newer_ver_text = f"\n🔔 New version ({latest_ver}) available!" if latest_ver and latest_ver.lstrip("v") > VERSION else ""
+
+    text = (
+        f"👋 *Welcome to the Overseerr Telegram Bot!* v{VERSION}"
+        f"{newer_ver_text}"
+        "\n\n🎬 *What I can do:*\n"
+        " - 🔍 Search movies & TV shows\n"
+        " - 📊 Check availability\n"
+        " - 🎫 Request new titles\n"
+        " - 🛠 Report issues\n\n"
+        "💡 *How to start:* Type `/check <title>`\n"
+        "_Example: `/check Venom`_\n\n"
+        "You can also configure your preferences with [/settings]."
+    )
+
+    reply_markup = None
+    if show_login_button:
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Login", callback_data="login")]])
+
+    await send_message(context, chat_id, text, reply_markup=reply_markup, message_thread_id=message_thread_id)
+
 
 # ==============================================================================
 # HELPER: SEND MESSAGE
@@ -61,10 +91,11 @@ async def send_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: s
     """
     Sends a message. Redirects to primary_chat_id if Group Mode is enabled,
     UNLESS the target is an Admin in a private chat.
+    Returns the Message object so we can delete it later.
     """
     if not allow_sending:
         logger.debug(f"Skipped sending message to chat {chat_id}: sending not allowed")
-        return
+        return None  # Return None if blocked
 
     conf = load_config()
     
@@ -73,18 +104,15 @@ async def send_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: s
         primary_id = conf["primary_chat_id"]["chat_id"]
         primary_thread = conf["primary_chat_id"]["message_thread_id"]
         
-        # Check if the target is an admin
         is_target_admin = conf["users"].get(str(chat_id), {}).get("is_admin", False)
-        is_private_chat = chat_id > 0 # Telegram IDs > 0 are private users
+        is_private_chat = chat_id > 0 
         
-        # Logic: Redirect only if it's NOT an admin private chat AND not already the group
         if is_target_admin and is_private_chat:
-            logger.debug(f"Sending directly to Admin {chat_id} (Bypassing Group Mode)")
+            pass # Send directly
         elif chat_id == primary_id:
-            pass # Already sending to the correct group
+            pass # Already group
         else:
-            # Redirect everyone else to the group
-            logger.info(f"Group mode enabled, redirecting message from {chat_id} to primary_chat_id: {primary_id}")
+            # Redirect
             chat_id = primary_id
             message_thread_id = primary_thread
 
@@ -97,9 +125,12 @@ async def send_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: s
         }
         if message_thread_id is not None:
             kwargs["message_thread_id"] = message_thread_id
-        await context.bot.send_message(**kwargs)
+        
+        return await context.bot.send_message(**kwargs)
+
     except Exception as e:
         logger.error(f"Failed to send message to chat {chat_id}, thread {message_thread_id}: {e}")
+        return None
 
 # ==============================================================================
 # STARTUP LOADER (Middleware)
@@ -280,7 +311,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('media_message_id', None)
         return
 
-    # 2. Handle Password Authentication
+      # 2. Handle Password Authentication
     if context.user_data.get("awaiting_password"):
         if text == PASSWORD:
             is_admin = user.get("is_admin", False)
@@ -291,18 +322,47 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"User {telegram_user_id} authorized via password.")
             
             context.user_data.pop("awaiting_password")
-            await send_message(context, chat_id, "✅ *Access granted!* Let’s get started...", message_thread_id=message_thread_id)
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+            
+            # --- PRIVAT: Erfolg ---
+            await context.bot.send_message(chat_id, "✅ *Access granted!* You are now authorized.\n\n🔙 Please return to the group chat to start requesting.", parse_mode="Markdown")
+            
+            # --- GRUPPE: Aufräumen & Begrüßen ---
+            grp_msg_id = context.user_data.get("auth_group_msg_id")
+            grp_chat_id = context.user_data.get("auth_group_chat_id")
+            
+            if grp_msg_id and grp_chat_id:
+                try: await context.bot.delete_message(chat_id=grp_chat_id, message_id=grp_msg_id)
+                except Exception: pass
+            
+            if grp_chat_id:
+                try:
+                    # 1. Info-Nachricht
+                    name_escaped = current_username.replace("_", "\\_").replace("*", "\\*")
+                    await context.bot.send_message(
+                        chat_id=grp_chat_id,
+                        text=f"👋 *{name_escaped}* has joined the party and is now authorized!",
+                        parse_mode="Markdown"
+                    )
+
+                    # 2. Die STANDARD Welcome Message (wiederverwendet!)
+                    # Hier zeigen wir KEINEN Login-Button an, da der User ja gerade auth hat.
+                    await send_welcome_message(context, grp_chat_id, show_login_button=False)
+
+                except Exception as e:
+                    logger.warning(f"Could not send success messages to group: {e}")
+
+            context.user_data.pop("auth_group_msg_id", None)
+            context.user_data.pop("auth_group_chat_id", None)
+
+            try: await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
             except Exception: pass
             
-            await start_command(update, context)
             if not is_admin and bot_settings.CURRENT_MODE == BotMode.API:
                 await handle_change_user(update, context, is_initial=True)
+            
         else:
-            await send_message(context, chat_id, "❌ *Oops!* Wrong password. Try again:", message_thread_id=message_thread_id)
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+            await context.bot.send_message(chat_id, "❌ *Oops!* That’s not the right password. Try again:", parse_mode="Markdown")
+            try: await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
             except Exception: pass
         return
 
@@ -509,22 +569,74 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conf = load_config()
 
-    if not is_command_allowed(chat_id, message_thread_id, conf, telegram_user_id):
-        return
-
-    # Auth Check
+    # --- 1. AUTH CHECK ---
     if PASSWORD and not user_is_authorized(telegram_user_id):
-        await send_message(context, chat_id, "👋 *Welcome!* Please enter the bot’s password to get started:", message_thread_id=message_thread_id)
-        context.user_data["awaiting_password"] = True
+        
+        # Case A: User is in a Group Chat
+        if chat_id < 0:
+            # 1. Delete the user's "/start" message to keep chat clean
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+            except Exception as e:
+                # Happens if bot is not admin or message is too old -> ignore
+                logger.debug(f"Could not delete user /start message: {e}")
+
+            # 2. Prepare button for private chat auth
+            bot_info = await context.bot.get_me()
+            url = f"https://t.me/{bot_info.username}?start=auth"
+            kb = [[InlineKeyboardButton("🔐 Enter Password Privately", url=url)]]
+            
+            # 3. Send the prompt to the group
+            sent_msg = await send_message(
+                context, 
+                chat_id, 
+                "👋 *Welcome!* For security reasons, please click the button below to enter the password.", 
+                reply_markup=InlineKeyboardMarkup(kb),
+                message_thread_id=message_thread_id
+            )
+            
+            # 4. Save message ID to delete it later once auth is complete
+            if sent_msg:
+                context.user_data["auth_group_msg_id"] = sent_msg.message_id
+                context.user_data["auth_group_chat_id"] = chat_id
+            return
+        
+        # Case B: User is in a Private Chat
+        else:
+            # CHECK: Did the user come via the button (Payload 'auth')?
+            # If so, delete the prompt in the group IMMEDIATELY.
+            if context.args and "auth" in context.args:
+                grp_msg_id = context.user_data.get("auth_group_msg_id")
+                grp_chat_id = context.user_data.get("auth_group_chat_id")
+                if grp_msg_id and grp_chat_id:
+                    try:
+                        await context.bot.delete_message(chat_id=grp_chat_id, message_id=grp_msg_id)
+                    except Exception: pass
+                    # Clear data to avoid double deletion attempts
+                    context.user_data.pop("auth_group_msg_id", None)
+
+            # Send password prompt (Directly, bypassing send_message wrapper)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="👋 *Welcome!* Please enter the bot’s password to get started:",
+                parse_mode="Markdown"
+            )
+            context.user_data["awaiting_password"] = True
+            return
+    # ---------------------
+
+    # --- 2. GROUP MODE RESTRICTION ---
+    # Check if the user is allowed to issue commands here (if already authorized)
+    if not is_command_allowed(chat_id, message_thread_id, conf, telegram_user_id):
+        if chat_id > 0 and conf["group_mode"]:
+             await context.bot.send_message(chat_id, "✅ You are authorized! Please use the bot in the group chat.")
         return
 
-    # Group Mode Init (Fixed Logic)
+    # --- 3. CONFIGURATION & INIT ---
+    
+    # Group Mode Init (Only save actual groups, ignore private chats)
     if conf["group_mode"]:
-        # Only set Primary ID if:
-        # 1. It is not set yet
-        # 2. AND the current chat is actually a Group (negative ID)
         current_primary = conf["primary_chat_id"].get("chat_id")
-        
         if current_primary is None and chat_id < 0:
             conf["primary_chat_id"] = {
                 "chat_id": chat_id,
@@ -533,10 +645,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_config(conf)
             logger.info(f"Group Mode: Set primary chat to {chat_id}")
         elif chat_id > 0:
-            # It's a private chat, do nothing to the config
             logger.debug("Admin started in private chat (Group Mode active but ignored for config)")
 
-    # First Admin Init
+    # First Admin Init (If no admin exists yet)
     user_id_str = str(telegram_user_id)
     if not any(u.get("is_admin", False) for u in conf["users"].values()):
         conf["users"][user_id_str] = {
@@ -551,39 +662,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await enable_global_telegram_notifications(update, context)
 
-    # Version Check (Async)
-    latest_ver = await get_latest_version_from_github()
-    newer_ver_text = ""
-    if latest_ver:
-        latest_stripped = latest_ver.strip().lstrip("v")
-        if latest_stripped > VERSION:
-            newer_ver_text = f"\n🔔 A new version ({latest_ver}) is available!"
-
-    start_message = (
-        f"👋 *Welcome to the Overseerr Telegram Bot!* v{VERSION}"
-        f"{newer_ver_text}"
-        "\n\n🎬 *What I can do:*\n"
-        " - 🔍 Search movies & TV shows\n"
-        " - 📊 Check availability\n"
-        " - 🎫 Request new titles\n"
-        " - 🛠 Report issues\n\n"
-        "💡 *How to start:* Type `/check <title>`\n"
-        "_Example: `/check Venom`_\n\n"
-        "You can also configure your preferences with [/settings]."
-    )
-
-    reply_markup = None
+    # --- 4. SEND WELCOME MESSAGE ---
     is_admin = conf["users"].get(user_id_str, {}).get("is_admin", False)
     
-    # Login prompt for Normal mode
-    if bot_settings.CURRENT_MODE == BotMode.NORMAL and not is_admin and "session_data" not in context.user_data:
-        start_message += (
-            "\n\n🔑 *Login Required*\n"
-            "Please log in with your Overseerr credentials to start requesting media."
-        )
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Login", callback_data="login")]])
-
-    await send_message(context, chat_id, start_message, reply_markup=reply_markup, message_thread_id=message_thread_id)
+    # Show login button only if needed (Normal Mode + not Admin + no active session)
+    need_login = (
+        bot_settings.CURRENT_MODE == BotMode.NORMAL 
+        and not is_admin 
+        and "session_data" not in context.user_data
+    )
+    
+    await send_welcome_message(context, chat_id, message_thread_id, show_login_button=need_login)
 
 
 # ==============================================================================
