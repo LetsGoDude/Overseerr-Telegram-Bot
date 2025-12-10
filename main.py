@@ -381,7 +381,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("I didn't understand that. Please use /start to see available commands.")
 
-
 # ==============================================================================
 # USER MANAGEMENT MENU (Admin)
 # ==============================================================================
