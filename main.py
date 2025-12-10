@@ -59,17 +59,35 @@ from overseerr_api import (
 # ==============================================================================
 async def send_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, reply_markup=None, allow_sending=True, message_thread_id: Optional[int]=None):
     """
-    Sends a message to the specified chat_id, or to primary_chat_id (with thread) if group_mode is enabled.
+    Sends a message. Redirects to primary_chat_id if Group Mode is enabled,
+    UNLESS the target is an Admin in a private chat.
     """
     if not allow_sending:
         logger.debug(f"Skipped sending message to chat {chat_id}: sending not allowed")
         return
 
     conf = load_config()
+    
+    # Check if we should redirect
     if conf["group_mode"] and conf["primary_chat_id"]["chat_id"] is not None:
-        chat_id = conf["primary_chat_id"]["chat_id"]
-        message_thread_id = conf["primary_chat_id"]["message_thread_id"]
-        logger.info(f"Group mode enabled, redirecting message to primary_chat_id: {chat_id}, thread: {message_thread_id}")
+        primary_id = conf["primary_chat_id"]["chat_id"]
+        primary_thread = conf["primary_chat_id"]["message_thread_id"]
+        
+        # Check if the target is an admin
+        is_target_admin = conf["users"].get(str(chat_id), {}).get("is_admin", False)
+        is_private_chat = chat_id > 0 # Telegram IDs > 0 are private users
+        
+        # Logic: Redirect only if it's NOT an admin private chat AND not already the group
+        if is_target_admin and is_private_chat:
+            logger.debug(f"Sending directly to Admin {chat_id} (Bypassing Group Mode)")
+        elif chat_id == primary_id:
+            pass # Already sending to the correct group
+        else:
+            # Redirect everyone else to the group
+            logger.info(f"Group mode enabled, redirecting message from {chat_id} to primary_chat_id: {primary_id}")
+            chat_id = primary_id
+            message_thread_id = primary_thread
+
     try:
         kwargs = {
             "chat_id": chat_id,
@@ -501,13 +519,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["awaiting_password"] = True
         return
 
-    # Group Mode Init
+    # Group Mode Init (Fixed Logic)
     if conf["group_mode"]:
-        conf["primary_chat_id"] = {
-            "chat_id": chat_id,
-            "message_thread_id": message_thread_id
-        }
-        save_config(conf)
+        # Only set Primary ID if:
+        # 1. It is not set yet
+        # 2. AND the current chat is actually a Group (negative ID)
+        current_primary = conf["primary_chat_id"].get("chat_id")
+        
+        if current_primary is None and chat_id < 0:
+            conf["primary_chat_id"] = {
+                "chat_id": chat_id,
+                "message_thread_id": message_thread_id
+            }
+            save_config(conf)
+            logger.info(f"Group Mode: Set primary chat to {chat_id}")
+        elif chat_id > 0:
+            # It's a private chat, do nothing to the config
+            logger.debug("Admin started in private chat (Group Mode active but ignored for config)")
 
     # First Admin Init
     user_id_str = str(telegram_user_id)
@@ -532,19 +560,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if latest_stripped > VERSION:
             newer_ver_text = f"\n🔔 A new version ({latest_ver}) is available!"
 
-    # --- HIER IST DEIN ORIGINAL-TEXT WIEDER EINGEFÜGT ---
     start_message = (
         f"👋 *Welcome to the Overseerr Telegram Bot!* v{VERSION}"
         f"{newer_ver_text}"
         "\n\n🎬 *What I can do:*\n"
         " - 🔍 Search movies & TV shows\n"
         " - 📊 Check availability\n"
+        " - 🎫 Request new titles\n"
         " - 🛠 Report issues\n\n"
         "💡 *How to start:* Type `/check <title>`\n"
         "_Example: `/check Venom`_\n\n"
         "You can also configure your preferences with [/settings]."
     )
-    # ----------------------------------------------------
 
     reply_markup = None
     is_admin = conf["users"].get(user_id_str, {}).get("is_admin", False)
