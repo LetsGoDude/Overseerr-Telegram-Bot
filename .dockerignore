@@ -12,3 +12,4 @@ venv/
 
 data/
 config.py
+docker-compose.yml

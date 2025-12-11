@@ -189,3 +189,4 @@ config.py
 secrets.py
 *.pyc
 .vscode/
+docker-compose.yml
