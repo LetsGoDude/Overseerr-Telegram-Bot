@@ -2,6 +2,7 @@ import httpx
 import urllib.parse
 import logging
 from typing import Optional, List, Dict, Tuple
+import uuid
 
 # Import directly from bot_settings
 import bot_settings
@@ -383,3 +384,92 @@ async def update_telegram_settings_for_user(
     except httpx.HTTPError as e:
         logger.error(f"Failed to update telegram bitmask for user {overseerr_user_id}: {e}")
         return False
+    
+
+# ==============================================================================
+# PLEX AUTHENTICATION FLOW
+# ==============================================================================
+
+# Generate a unique client identifier so Plex recognizes this specific bot instance
+CLIENT_IDENTIFIER = str(uuid.uuid4())
+PLEX_PRODUCT_NAME = "Overseerr-Telegram-Bot"
+
+async def get_plex_auth_pin() -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Request a PIN and Auth-URL from plex.tv.
+    Returns: (pin_id, code, auth_url)
+    """
+    url = "https://plex.tv/api/v2/pins"
+    headers = {
+        "X-Plex-Product": PLEX_PRODUCT_NAME,
+        "X-Plex-Client-Identifier": CLIENT_IDENTIFIER,
+        "Accept": "application/json"
+    }
+    # 'strong=true' ensures we get a secure PIN flow
+    params = {"strong": "true"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 201:
+                data = response.json()
+                pin_id = data.get("id")
+                code = data.get("code")
+                # Construct the official Plex auth URL
+                auth_url = (
+                    f"https://app.plex.tv/auth#?clientID={CLIENT_IDENTIFIER}"
+                    f"&code={code}"
+                    f"&context%5Bdevice%5D%5Bproduct%5D={PLEX_PRODUCT_NAME}"
+                )
+                return pin_id, code, auth_url
+    except httpx.HTTPError as e:
+        logger.error(f"Plex PIN request failed: {e}")
+    
+    return None, None, None
+
+async def check_plex_pin(pin_id: int) -> Optional[str]:
+    """
+    Checks if the user has authorized the PIN on plex.tv.
+    Returns the Plex authToken if authorized, else None.
+    """
+    url = f"https://plex.tv/api/v2/pins/{pin_id}"
+    headers = {
+        "X-Plex-Product": PLEX_PRODUCT_NAME,
+        "X-Plex-Client-Identifier": CLIENT_IDENTIFIER,
+        "Accept": "application/json"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                # The 'authToken' field is only present if the user confirmed the login
+                return data.get("authToken")
+    except httpx.HTTPError as e:
+        logger.error(f"Plex PIN check failed: {e}")
+    
+    return None
+
+async def overseerr_login_via_plex(plex_token: str) -> Optional[str]:
+    """
+    Exchanges the Plex Auth Token for an Overseerr Session Cookie.
+    """
+    url = f"{OVERSEERR_API_URL}/auth/plex"
+    payload = {"authToken": plex_token}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
+            cookie = response.cookies.get("connect.sid")
+            logger.info("Plex Login successful")
+            return cookie
+    except httpx.HTTPError as e:
+        logger.error(f"Overseerr Plex Login failed: {e}")
+        return None

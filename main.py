@@ -50,7 +50,8 @@ from overseerr_api import (
     request_media, create_issue,
     get_latest_version_from_github,
     get_global_telegram_notifications, set_global_telegram_notifications,
-    get_user_notification_settings, update_telegram_settings_for_user
+    get_user_notification_settings, update_telegram_settings_for_user,
+    get_plex_auth_pin, check_plex_pin, overseerr_login_via_plex
 )
 
 # ==============================================================================
@@ -207,18 +208,27 @@ async def enable_global_telegram_notifications(update: Update, context: ContextT
 # AUTH & LOGIN FLOWS
 # ==============================================================================
 async def start_login(update_or_query: Update | CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
-    """Initiates login."""
+    """Shows the login method selection menu."""
+    # 1. Determine IDs cleanly (depending on the type of call)
     if isinstance(update_or_query, Update):
+        # Call via command (Nachricht)
         telegram_user_id = update_or_query.effective_user.id
+        chat_id = update_or_query.effective_chat.id
         message = update_or_query.message
-    else:  # CallbackQuery
+    else:
+        # Call via button (CallbackQuery)
         telegram_user_id = update_or_query.from_user.id
+        chat_id = update_or_query.message.chat_id
         message = update_or_query.message
 
-    logger.info(f"User {telegram_user_id} started login process.")
+    # Cleanup old messages if it's a callback
+    if isinstance(update_or_query, CallbackQuery):
+        try: await message.delete()
+        except Exception: pass
 
+    # Check restrictions (API Mode / Shared Admin)
     if bot_settings.CURRENT_MODE == BotMode.API:
-        await message.reply_text("In API Mode, no login is required.")
+        await context.bot.send_message(chat_id, "In API Mode, no login is required.")
         return
 
     if bot_settings.CURRENT_MODE == BotMode.SHARED:
@@ -226,21 +236,18 @@ async def start_login(update_or_query: Update | CallbackQuery, context: ContextT
         user_id_str = str(telegram_user_id)
         user = conf["users"].get(user_id_str, {})
         if not user.get("is_admin", False):
-            await message.reply_text("In Shared Mode, only admins can log in.")
+            await context.bot.send_message(chat_id, "In Shared Mode, only admins can log in.")
             return
 
-    if isinstance(update_or_query, CallbackQuery):
-        try:
-            await message.delete()
-        except Exception as e:
-            logger.warning(f"Failed to delete settings menu message: {e}")
-
-    context.user_data["login_step"] = "email"
-    msg = await context.bot.send_message(
-        chat_id=message.chat_id,
-        text="Please enter your Overseerr email address:"
-    )
-    context.user_data["login_message_id"] = msg.message_id
+    text = "🔑 *Login Method*\n\nHow do you want to sign in to Overseerr?"
+    
+    keyboard = [
+        [InlineKeyboardButton("📧 Email / Password", callback_data="login_method_email")],
+        [InlineKeyboardButton("▶️ Plex Account", callback_data="login_method_plex")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_settings")]
+    ]
+    
+    await context.bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ==============================================================================
 # TEXT INPUT HANDLER
@@ -700,7 +707,6 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
     is_admin = user.get("is_admin", False)
 
     if bot_settings.CURRENT_MODE == BotMode.SHARED and not is_admin:
-        # Optional: Send a notification that they can't access settings
         await send_message(context, chat_id, "🔒 User settings are managed by the admin in Shared Mode.", message_thread_id=message_thread_id)
         return
 
@@ -710,12 +716,30 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
 
     # 3. Prepare Data for Dashboard
     overseerr_user_name = context.user_data.get("overseerr_user_name", "Unknown")
-    overseerr_id = context.user_data.get("overseerr_telegram_user_id") # Can be None
+    overseerr_id = context.user_data.get("overseerr_telegram_user_id")
     
+    # --- ACCOUNT TYPE DETECTION ---
+    account_type_icon = ""
+    
+    if bot_settings.CURRENT_MODE == BotMode.API:
+        account_type_icon = " (via 🔑 API)"
+    else:
+        # Try to find session (User Data oder Shared Data)
+        session = context.user_data.get("session_data") or context.application.bot_data.get("shared_session")
+        
+        if session:
+            creds = session.get("credentials", "")
+            if creds == "PLEX_AUTH":
+                account_type_icon = " (▶️ Plex)"
+            elif creds:
+                account_type_icon = " (📧 Local)"
+    # ------------------------------
+
     # Connection Status Logic
     if overseerr_id:
         connection_status = "✅ Connected"
-        user_display = f"*{overseerr_user_name}* (`{overseerr_id}`)"
+        # Anzeige: Name + Account-Typ
+        user_display = f"*{overseerr_user_name}*{account_type_icon}"
     else:
         connection_status = "❌ Not connected"
         user_display = "_No user selected_"
@@ -758,7 +782,7 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
 
     text += "_Select an action below:_"
 
-    # 5. Build Buttons (Logic remains the same, just keeping it robust)
+    # 5. Build Buttons
     keyboard = []
     
     # Row 1: Account Management
@@ -1098,6 +1122,117 @@ async def mode_select(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
+
+async def handle_login_method(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the selection of the login method."""
+    method = query.data
+    chat_id = query.message.chat_id
+
+    if method == "login_method_email":
+        # Standard Email Flow
+        context.user_data["login_step"] = "email"
+        msg = await context.bot.send_message(chat_id, "📧 Please enter your **Overseerr Email** address:", parse_mode="Markdown")
+        context.user_data["login_message_id"] = msg.message_id
+        await query.message.delete()
+
+    elif method == "login_method_plex":
+        # 1. Request PIN from Plex
+        pin_id, code, url = await get_plex_auth_pin()
+        if not pin_id:
+            await query.edit_message_text("❌ Could not connect to Plex.tv. Please try again later.")
+            return
+
+        # 2. Store PIN ID to verify later
+        context.user_data["plex_pin_id"] = pin_id
+        
+        # 3. Show instructions
+        text = (
+            "▶️ *Plex Login*\n\n"
+            "1. Click the link button below.\n"
+            "2. Sign in with Plex and **approve** the request.\n"
+            "3. Return here and click **'✅ I have logged in'**."
+        )
+        
+        kb = [
+            [InlineKeyboardButton("🔗 Login via Plex", url=url)],
+            [InlineKeyboardButton("✅ I have logged in", callback_data="check_plex_login")],
+            [InlineKeyboardButton("❌ Cancel", callback_data="cancel_settings")]
+        ]
+        
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
+async def check_plex_login_callback(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
+    """Verifies if the user has completed the Plex login flow."""
+    pin_id = context.user_data.get("plex_pin_id")
+    
+    if not pin_id:
+        await query.answer("Session expired. Please start over.")
+        await start_login(query, context)
+        return
+
+    # 1. Check status with Plex
+    plex_token = await check_plex_pin(pin_id)
+    
+    if not plex_token:
+        # Not authorized yet
+        await query.answer("⏳ Not authorized yet. Please login in the browser first.", show_alert=True)
+        return
+
+    # 2. Exchange Plex Token for Overseerr Session
+    await query.edit_message_text("🔄 Verifying with Overseerr...")
+    session_cookie = await overseerr_login_via_plex(plex_token)
+
+    if session_cookie:
+        # --- SUCCESS ---
+        try:
+            # Fetch User Info from Overseerr to get ID and Name
+            async with httpx.AsyncClient() as client:
+                me_resp = await client.get(
+                    f"{bot_settings.OVERSEERR_API_URL}/auth/me",
+                    headers={"Cookie": f"connect.sid={session_cookie}"},
+                    timeout=10
+                )
+                user_info = me_resp.json()
+                overseerr_id = user_info.get("id")
+
+            # Prepare Session Data
+            session_data = {
+                "cookie": session_cookie,
+                "credentials": "PLEX_AUTH", # Placeholder, as we don't have a password
+                "overseerr_telegram_user_id": overseerr_id,
+                "overseerr_user_name": user_info.get("displayName", "Plex User")
+            }
+            
+            # Save Session (Normal or Shared Mode)
+            telegram_user_id = query.from_user.id
+            is_admin = load_config()["users"].get(str(telegram_user_id), {}).get("is_admin", False)
+
+            if bot_settings.CURRENT_MODE == BotMode.NORMAL:
+                save_user_session(telegram_user_id, session_data)
+            elif bot_settings.CURRENT_MODE == BotMode.SHARED and is_admin:
+                save_shared_session(session_data)
+                context.application.bot_data["shared_session"] = session_data
+            
+            # Update Context
+            context.user_data["session_data"] = session_data
+            context.user_data["overseerr_telegram_user_id"] = overseerr_id
+            context.user_data["overseerr_user_name"] = session_data["overseerr_user_name"]
+
+            await query.edit_message_text(f"✅ Successfully logged in as *{session_data['overseerr_user_name']}*!", parse_mode="Markdown")
+            
+            # Cleanup
+            context.user_data.pop("plex_pin_id", None)
+            
+            # Return to Settings
+            await show_settings_menu(query, context, is_admin)
+
+        except Exception as e:
+            logger.error(f"Plex Login Success but Info Fetch failed: {e}")
+            await query.edit_message_text("❌ Login worked, but failed to fetch user data from Overseerr.")
+    else:
+        await query.edit_message_text("❌ Overseerr rejected the Plex Token. \nIs this Plex user imported into Overseerr?")
+
+
 # ==============================================================================
 # BUTTON HANDLER (CALLBACKS)
 # ==============================================================================
@@ -1176,18 +1311,62 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mode_select(query, context)
         return
 
+        
     elif data.startswith("activate_"):
         mode_str = data.split("_")[1]
         conf["mode"] = mode_str
         bot_settings.CURRENT_MODE = BotMode[mode_str.upper()]
         save_config(conf)
+
+        # 1. Clear any existing session data from the previous mode
+        context.user_data.pop("session_data", None)
+        context.user_data.pop("overseerr_telegram_user_id", None)
+        context.user_data.pop("overseerr_user_name", None)
+        
+        # 2. Load data relevant to the NEW mode immediately
+        if bot_settings.CURRENT_MODE == BotMode.SHARED:
+            # Try to load the shared session file from disk
+            shared_sess = load_shared_session()
+            if shared_sess:
+                # Update global bot data
+                context.application.bot_data["shared_session"] = shared_sess
+                # Update current user context for immediate display
+                context.user_data["overseerr_telegram_user_id"] = shared_sess.get("overseerr_telegram_user_id")
+                context.user_data["overseerr_user_name"] = shared_sess.get("overseerr_user_name")
+        
+        elif bot_settings.CURRENT_MODE == BotMode.NORMAL:
+            # Try to load the individual session for this admin
+            user_sess = load_user_session(telegram_user_id)
+            if user_sess:
+                context.user_data["session_data"] = user_sess
+                context.user_data["overseerr_telegram_user_id"] = user_sess.get("overseerr_telegram_user_id")
+                context.user_data["overseerr_user_name"] = user_sess.get("overseerr_user_name")
+
+        elif bot_settings.CURRENT_MODE == BotMode.API:
+            # Try to load the API user selection
+            ov_id, ov_name = get_saved_user_for_telegram_id(telegram_user_id)
+            if ov_id:
+                context.user_data["overseerr_telegram_user_id"] = ov_id
+                context.user_data["overseerr_user_name"] = ov_name
+
         await show_settings_menu(query, context, is_admin)
         return
+
+  
 
     # 5. Auth
     elif data == "login":
         await start_login(query, context)
         return
+    
+    elif data.startswith("login_method_"):
+        await handle_login_method(query, context)
+        return
+
+    elif data == "check_plex_login":
+        await check_plex_login_callback(query, context)
+        return
+
     elif data == "logout":
         context.user_data.pop("session_data", None)
         context.user_data.pop("overseerr_telegram_user_id", None)
@@ -1258,7 +1437,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 9. Requests
     elif data.startswith("confirm_"):
         parts = data.split("_")
-        req_type = parts[1]
+        req_type = parts[1] # 1080p, 4k, both
         mid = int(parts[2])
         
         results = context.user_data.get("search_results", [])
@@ -1267,6 +1446,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("Error: Media not found in cache.")
             return
 
+        # Determine Auth
         cookie = None
         req_by = None
         
@@ -1277,6 +1457,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif bot_settings.CURRENT_MODE == BotMode.API:
             req_by = context.user_data.get("overseerr_telegram_user_id")
 
+        # Execute Requests
         succ_hd, msg_hd, succ_4k, msg_4k = None, None, None, None
         
         if req_type in ["1080p", "both"]:
@@ -1285,9 +1466,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if req_type in ["4k", "both"]:
             succ_4k, msg_4k = await request_media(mid, res["mediaType"], req_by, True, cookie)
 
-        txt = f"*Request Status for {res['title']}*\n"
-        if succ_hd is not None: txt += f"1080p: {'✅' if succ_hd else '❌ ' + msg_hd}\n"
-        if succ_4k is not None: txt += f"4K: {'✅' if succ_4k else '❌ ' + msg_4k}\n"
+        txt = f"📥 *Request Sent to Overseerr*\n"
+        txt += f"🎬 *{res['title']}* ({res['year']})\n\n"
+        
+        if succ_hd is not None:
+            status = "✅ Successfully requested!" if succ_hd else f"❌ {msg_hd}"
+            txt += f"• *1080p:* {status}\n"
+            
+        if succ_4k is not None:
+            status = "✅ Successfully requested!" if succ_4k else f"❌ {msg_4k}"
+            txt += f"• *4K:* {status}\n"
         
         await query.edit_message_caption(txt, parse_mode="Markdown")
         return
