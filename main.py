@@ -1091,6 +1091,10 @@ async def user_can_request_4k(overseerr_id: int, media_type: str) -> bool:
     return False
 
 async def mode_select(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
+
+    # Link to the specific wiki section
+    wiki_url = "https://github.com/LetsGoDude/OverseerrRequestViaTelegramBot/wiki#operation-modes"
+
     text = (
         "🔧 *System Operation Mode*\n\n"
         
@@ -1110,7 +1114,7 @@ async def mode_select(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
         "A single Overseerr account is shared for all users. The admin logs in once, and all user requests are sent through this shared account. "
         "Normal users cannot change any settings.\n\n"
 
-        "📖 _See GitHub Wiki for details._"
+        f"📖 [Read Wiki for details]({wiki_url})"
     )
 
     keyboard = [
@@ -1120,7 +1124,7 @@ async def mode_select(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔙 Back to Settings", callback_data="back_to_settings")]
     ]
 
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
 
 
 async def handle_login_method(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
