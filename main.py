@@ -1040,7 +1040,7 @@ async def process_user_selection(update_or_query, context, result, edit_message=
 
     keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back_to_results")])
 
-    # HÜBSCH: Hilfsfunktion für Texte mit Emojis
+    # Helper function for status text with emojis
     def get_status_text(code):
         try:
             status = MediaStatus(code)
@@ -1056,7 +1056,16 @@ async def process_user_selection(update_or_query, context, result, edit_message=
     txt_hd = get_status_text(status_hd)
     txt_4k = get_status_text(status_4k)
 
-    if txt_hd: stat_txt += f"\n• 1080p: {txt_hd}"
+    # SMART LABEL LOGIC:
+    # If 4K status is UNKNOWN (1), it implies no separate 4K server is configured (Single Server Setup).
+    # In this case, labeling the standard status as "1080p" is misleading because the content could be 4K.
+    # So we change the label to a generic "Status".
+    # If 4K status is KNOWN, we keep the distinction "1080p" vs "4K".
+    label_hd = "1080p"
+    if status_4k == MediaStatus.UNKNOWN:
+        label_hd = "Status"
+
+    if txt_hd: stat_txt += f"\n• {label_hd}: {txt_hd}"
     if txt_4k: stat_txt += f"\n• 4K: {txt_4k}"
     
     msg_text = f"*{title} ({year})*\n\n{desc}\n{stat_txt}"
@@ -1473,13 +1482,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txt = f"📥 *Request Sent to Overseerr*\n"
         txt += f"🎬 *{res['title']}* ({res['year']})\n\n"
         
+        # Determine Label (Same logic as in process_user_selection)
+        # We check the cached result 'res' for status_4k
+        label_hd = "1080p"
+        if res.get("status_4k", 1) == MediaStatus.UNKNOWN:
+            label_hd = "Status"
+        
         if succ_hd is not None:
             status = "✅ Successfully requested!" if succ_hd else f"❌ {msg_hd}"
-            txt += f"• *1080p:* {status}\n"
+            txt += f"• *{label_hd}:* {status}\n"
             
         if succ_4k is not None:
             status = "✅ Successfully requested!" if succ_4k else f"❌ {msg_4k}"
             txt += f"• *4K:* {status}\n"
+        # -------------------------------
         
         await query.edit_message_caption(txt, parse_mode="Markdown")
         return
