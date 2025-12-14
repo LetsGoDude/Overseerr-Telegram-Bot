@@ -28,6 +28,7 @@ def load_config() -> dict:
             config = json.load(f)
             # Ensure default structure exists
             config.setdefault("group_mode", False)
+            config.setdefault("send_startup_notification", False)
             config.setdefault("primary_chat_id", {"chat_id": None, "message_thread_id": None})
             config["primary_chat_id"].setdefault("chat_id", None)
             config["primary_chat_id"].setdefault("message_thread_id", None)

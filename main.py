@@ -12,6 +12,7 @@ from telegram import (
     CallbackQuery,
 )
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
@@ -772,12 +773,15 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
         f"└ Status: {connection_status}\n\n"
     )
 
+    startup_notify_status = "🟢 On" if conf.get("send_startup_notification") else "🔴 Off"
+
     # Section: System (Admin only)
     if is_admin:
         text += (
             "🛠 *System Configuration*\n"
             f"├ Bot Mode: {mode_sym} *{mode_desc}*\n"
-            f"└ Group Support: {group_status} {group_detail}\n\n"
+            f"├ Group Support: {group_status} {group_detail}\n"
+            f"└ Startup Notify: {startup_notify_status}\n\n" # <--- NEU
         )
 
     text += "_Select an action below:_"
@@ -807,6 +811,7 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
         keyboard.extend([
             [InlineKeyboardButton("🔧 Change Operation Mode", callback_data="mode_select")],
             [InlineKeyboardButton(f"👥 Toggle Group Mode ({'On' if conf['group_mode'] else 'Off'})", callback_data="toggle_group_mode")],
+            [InlineKeyboardButton(f"🤖 Toggle Startup Notify ({'On' if conf.get('send_startup_notification') else 'Off'})", callback_data="toggle_startup_notify")], # <--- NEUER BUTTON
             [InlineKeyboardButton("👥 User Management", callback_data="manage_users")]
         ])
 
@@ -1324,6 +1329,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mode_select(query, context)
         return
 
+    elif data == "toggle_startup_notify":
+        current_state = conf.get("send_startup_notification", False)
+        conf["send_startup_notification"] = not current_state
+        save_config(conf)
+        await show_settings_menu(query, context, is_admin)
+        return
         
     elif data.startswith("activate_"):
         mode_str = data.split("_")[1]
@@ -1572,6 +1583,44 @@ async def handle_change_user(update_or_query, context, is_initial=False, offset=
 
 
 # ==============================================================================
+# LIFECYCLE HOOKS
+# ==============================================================================
+def get_primary_admin_id() -> Optional[int]:
+    """
+    Helper to find the first admin ID from the config.
+    Used to send system notifications.
+    """
+    conf = load_config()
+    for user_id, data in conf["users"].items():
+        if data.get("is_admin"):
+            return int(user_id)
+    return None
+
+async def post_init(application: Application):
+    """
+    Runs after the bot has successfully started up.
+    Sends a notification to the admin if enabled in settings.
+    """
+    conf = load_config()
+    
+    # Check if the feature is enabled
+    if not conf.get("send_startup_notification", False):
+        return
+
+    admin_id = get_primary_admin_id()
+    if admin_id:
+        try:
+            await application.bot.send_message(
+                chat_id=admin_id,
+                text=f"🤖 *System Online*\nOverseerr Bot v{VERSION} is up and running!",
+                parse_mode="Markdown"
+            )
+            logger.info("Startup notification sent to admin.")
+        except Exception as e:
+            logger.warning(f"Failed to send startup message: {e}")
+
+
+# ==============================================================================
 # MAIN ENTRY POINT
 # ==============================================================================
 def main():
@@ -1588,7 +1637,12 @@ def main():
     logger.info(f"Bot started. Version: {VERSION}. Mode: {bot_settings.CURRENT_MODE.value}")
 
     # Build App
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TELEGRAM_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
 
     # Shared Session Init
     if bot_settings.CURRENT_MODE == BotMode.SHARED:
