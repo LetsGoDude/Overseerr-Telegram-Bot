@@ -50,7 +50,7 @@ if not all([OVERSEERR_API_URL, OVERSEERR_API_KEY, TELEGRAM_TOKEN]):
 # 3. BOT CONSTANTS & PATHS
 # ==============================================================================
 VERSION = "4.0.0"
-BUILD = "2025.12.07.301"
+BUILD = "2025.12.14.310"
 
 DATA_DIR = "data"
 CONFIG_FILE = f"{DATA_DIR}/bot_config.json"

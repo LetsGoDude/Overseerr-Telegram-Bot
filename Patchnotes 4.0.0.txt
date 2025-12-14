@@ -1,0 +1,41 @@
+Here are the complete and professional **Patch Notes (Release Notes)** for your GitHub Release v4.0.0.
+
+I have grouped them logically (Breaking Changes, New Features, Tech Improvements) so users see the most important information first.
+
+***
+
+# 🚀 v4.0.0 - The Async & Architecture Update
+
+This is a massive update that completely rewrites the bot's core architecture. We moved from a monolithic synchronous script to a modular, high-performance asynchronous application. It also introduces long-awaited features like Plex Login and a smart solution for Group Chat authentication.
+
+## 🚨 BREAKING CHANGES
+*   **Renamed Main Script:** The script `telegram_overseerr_bot_beta.py` has been renamed to **`main.py`**.
+    *   **Action Required:** You must update your startup commands, systemd services, or custom scripts to run `python main.py`.
+    *   **Docker Users:** If you pull the new image, this is handled automatically. If you use a custom Dockerfile, please update the `CMD`.
+*   **Configuration Structure:** The project now uses a modular structure (`main.py`, `utils.py`, `overseerr_api.py`, `bot_settings.py`). Ensure you deploy **all** files, not just the main script.
+
+## ✨ New Features
+*   **▶️ Plex Authentication:** Added support for signing in via **Plex Account** using the official PIN flow. You can now choose between "Email/Password" and "Plex" in the login menu.
+*   **🔐 Smart Group Authentication:** Solved the Telegram "Group Privacy Mode" issue.
+    *   When a new user types `/start` in a group, the bot provides a secure button to authenticate in a private chat.
+    *   After entering the password privately, the user is automatically guided back to the group.
+    *   *No need to disable privacy mode via BotFather anymore!*
+*   **🎛️ Redesigned Settings Dashboard:** The `/settings` menu has been completely overhauled. It now features a clean dashboard look, displaying connection status, account type (Local vs. Plex vs. API), and Group Mode details.
+*   **🤖 System Notifications:** Added an optional feature to send a "System Online" notification to the admin when the bot starts up (configurable in settings).
+
+## ⚡ Improvements & Refactoring
+*   **Async Core:** Switched from `requests` to **`httpx`** and `asyncio`. The bot is now non-blocking, meaning it can handle multiple user requests simultaneously without freezing while waiting for Overseerr.
+*   **Smart Quality Labeling:** Fixed misleading "1080p" labels for single-server setups. If no 4K server is configured in Overseerr, the bot now neutrally labels the status as "Status" instead of forcing "1080p".
+*   **Request Confirmation:** The "Request Sent" message is now cleaner and lists the specific status for both resolutions clearly.
+*   **Docker Security:** Added `.dockerignore` to prevent local configuration files (passwords) from being accidentally copied into the Docker image during build.
+
+## 🐛 Bug Fixes
+*   Fixed an issue where changing the operation mode (Normal/Shared/API) would display stale user session data until a restart.
+*   Fixed authentication loops when using Group Mode.
+
+---
+
+**How to update:**
+1.  Pull the latest changes: `git pull`
+2.  Update dependencies: `pip install -r requirements.txt`
+3.  Start the bot: `python main.py`
