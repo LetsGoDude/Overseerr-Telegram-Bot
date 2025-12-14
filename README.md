@@ -19,7 +19,7 @@ With **Version 4.0.0**, the bot has been rebuilt for high performance (Async) an
 - **Issue Reporting**: Report issues like video glitches, audio sync problems, or missing subtitles directly to Overseerr.
 - **Notification Management**: Customize Telegram notifications for Overseerr events (e.g., request approvals, media availability).
 - **Admin Dashboard**: A completely redesigned `/settings` menu allows admins to switch operation modes, manage users, and toggle system notifications.
-- **Smart Group Mode**: Use the bot safely in group chats. The bot provides a secure button to authenticate in a private chat and redirects you back to the group—no need to disable Telegram's privacy mode!
+- **Smart Group Mode**: Use the bot safely in group chats.
 
 > [!Note]
 > The language of media titles and descriptions matches the language setting configured in Overseerr (e.g., German titles if Overseerr is set to German), while the bot's interface remains in English.
@@ -49,9 +49,6 @@ services:
       - ./data:/app/data
     restart: unless-stopped
 ```
-
-> **⚠️ Upgrading from v3.x?**  
-> The main script has been renamed to `main.py`. If you define a custom command in your Docker setup or NAS, please update it to `python main.py`.
 
 ---
 
