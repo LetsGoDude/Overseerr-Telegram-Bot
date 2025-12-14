@@ -271,7 +271,7 @@ async def get_latest_version_from_github() -> str:
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.get(
-                "https://api.github.com/repos/LetsGoDude/OverseerrRequestViaTelegramBot/releases/latest",
+                "https://api.github.com/repos/LetsGoDude/Overseerr-Telegram-Bot/releases/latest",
                 timeout=10
             )
             response.raise_for_status()

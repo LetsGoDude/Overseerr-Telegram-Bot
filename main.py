@@ -1107,7 +1107,7 @@ async def user_can_request_4k(overseerr_id: int, media_type: str) -> bool:
 async def mode_select(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
 
     # Link to the specific wiki section
-    wiki_url = "https://github.com/LetsGoDude/OverseerrRequestViaTelegramBot/wiki#operation-modes"
+    wiki_url = "https://github.com/LetsGoDude/Overseerr-Telegram-Bot/wiki#operation-modes"
 
     text = (
         "🔧 *System Operation Mode*\n\n"
