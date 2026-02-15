@@ -447,8 +447,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_settings_menu(update, context, is_admin=is_admin)
         return
 
-    await update.message.reply_text("I didn't understand that. Please use /start to see available commands.")
-
 # ==============================================================================
 # USER MANAGEMENT MENU (Admin)
 # ==============================================================================
