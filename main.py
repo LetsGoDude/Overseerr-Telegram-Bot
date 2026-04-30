@@ -4,6 +4,7 @@ import os
 import httpx # NEW IMPORT for manual requests in login
 from datetime import datetime, timezone
 from typing import Optional
+import i18n
 
 from telegram import (
     Update,
@@ -30,6 +31,7 @@ from bot_settings import (
     DEFAULT_POSTER_URL,
     ISSUE_TYPES,
     PERMISSION_4K_MOVIE, PERMISSION_4K_TV,
+    I18N_DIR, I18N_OVERRIDE_DIR, APP_LOCALE,
     BotMode, MediaStatus, # Wir behalten nur MediaStatus
     logger
 )
@@ -55,6 +57,11 @@ from overseerr_api import (
     get_plex_auth_pin, check_plex_pin, overseerr_login_via_plex
 )
 
+i18n.load_path.append(I18N_DIR)
+i18n.load_path.append(I18N_OVERRIDE_DIR)
+i18n.set('locale', APP_LOCALE)
+i18n.set('fallback', 'en')
+
 # ==============================================================================
 # HELPER: SEND WELCOME MESSAGE
 # ==============================================================================
@@ -64,24 +71,13 @@ async def send_welcome_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int,
     """
     # Version Check (Async)
     latest_ver = await get_latest_version_from_github()
-    newer_ver_text = f"\n🔔 New version ({latest_ver}) available!" if latest_ver and latest_ver.lstrip("v") > VERSION else ""
+    newer_ver_text = f"\n{i18n.t('messages.version_available', version=latest_ver)}" if latest_ver and latest_ver.lstrip("v") > VERSION else ""
 
-    text = (
-        f"👋 *Welcome to the Overseerr Telegram Bot!* v{VERSION}"
-        f"{newer_ver_text}"
-        "\n\n🎬 *What I can do:*\n"
-        " - 🔍 Search movies & TV shows\n"
-        " - 📊 Check availability\n"
-        " - 🎫 Request new titles\n"
-        " - 🛠 Report issues\n\n"
-        "💡 *How to start:* Type `/check <title>`\n"
-        "_Example: `/check Venom`_\n\n"
-        "You can also configure your preferences with [/settings]."
-    )
+    text = i18n.t('messages.welcome_message', current_version=VERSION, newer_version=newer_ver_text)
 
     reply_markup = None
     if show_login_button:
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔑 Login", callback_data="login")]])
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(i18n.t('auth.login_button'), callback_data="login")]])
 
     await send_message(context, chat_id, text, reply_markup=reply_markup, message_thread_id=message_thread_id)
 
@@ -240,12 +236,12 @@ async def start_login(update_or_query: Update | CallbackQuery, context: ContextT
             await context.bot.send_message(chat_id, "In Shared Mode, only admins can log in.")
             return
 
-    text = "🔑 *Login Method*\n\nHow do you want to sign in to Overseerr?"
+    text = i18n.t('auth.login_method_desc')
     
     keyboard = [
-        [InlineKeyboardButton("📧 Email / Password", callback_data="login_method_email")],
-        [InlineKeyboardButton("▶️ Plex Account", callback_data="login_method_plex")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_settings")]
+        [InlineKeyboardButton(i18n.t('auth.login_email_password_btn'), callback_data="login_method_email")],
+        [InlineKeyboardButton(i18n.t('auth.login_plex_btn'), callback_data="login_method_plex")],
+        [InlineKeyboardButton(i18n.t('messages.cancel_btn'), callback_data="cancel_settings")]
     ]
     
     await context.bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -283,7 +279,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         selected_result = context.user_data.get('selected_result')
         if not selected_result:
-            await update.message.reply_text("An error occurred. Please try reporting the issue again.")
+            await update.message.reply_text(i18n.t('reports.issue_report_error'))
             return
 
         media_id = selected_result.get('overseerr_id')
@@ -293,7 +289,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         telegram_user_id_for_issue = context.user_data.get("overseerr_telegram_user_id")
         user_display_name = context.user_data.get("overseerr_user_name", "Unknown User")
         
-        final_issue_description = f"(Reported by {user_display_name})\n\n{issue_description}"
+        final_issue_description = i18n.t('reports.issue_report_final', user_name=user_display_name, issue_description=issue_description)
 
         success = await create_issue(
             media_id=media_id,
@@ -304,9 +300,9 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if success:
-            await update.message.reply_text(f"✅ Thank you! Issue with *{media_title}* reported.", parse_mode="Markdown")
+            await update.message.reply_text(i18n.t('reports.issue_report_success', media_title=media_title), parse_mode="Markdown")
         else:
-            await update.message.reply_text(f"❌ Failed to report issue with *{media_title}*.", parse_mode="Markdown")
+            await update.message.reply_text(i18n.t('reports.issue_report_failure', media_title=media_title), parse_mode="Markdown")
 
         context.user_data.pop('reporting_issue', None)
         context.user_data.pop('selected_result', None)
@@ -332,7 +328,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop("awaiting_password")
             
             # --- PRIVAT: Erfolg ---
-            await context.bot.send_message(chat_id, "✅ *Access granted!* You are now authorized.\n\n🔙 Please return to the group chat to start requesting.", parse_mode="Markdown")
+            await context.bot.send_message(chat_id, i18n.t('auth.login_success_private'), parse_mode="Markdown")
             
             # --- GRUPPE: Aufräumen & Begrüßen ---
             grp_msg_id = context.user_data.get("auth_group_msg_id")
@@ -348,7 +344,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     name_escaped = current_username.replace("_", "\\_").replace("*", "\\*")
                     await context.bot.send_message(
                         chat_id=grp_chat_id,
-                        text=f"👋 *{name_escaped}* has joined the party and is now authorized!",
+                        text=i18n.t('auth.login_success_group', user_name=name_escaped),
                         parse_mode="Markdown"
                     )
 
@@ -369,7 +365,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await handle_change_user(update, context, is_initial=True)
             
         else:
-            await context.bot.send_message(chat_id, "❌ *Oops!* That’s not the right password. Try again:", parse_mode="Markdown")
+            await context.bot.send_message(chat_id, i18n.t('auth.login_failure'), parse_mode="Markdown")
             try: await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
             except Exception: pass
         return
@@ -393,7 +389,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data["login_step"] == "email":
             context.user_data["login_email"] = text
             context.user_data["login_step"] = "password"
-            msg = await context.bot.send_message(chat_id, "Please enter your Overseerr password:")
+            msg = await context.bot.send_message(chat_id, i18n.t('auth.seerr_password_prompt'), parse_mode="Markdown")
             context.user_data["login_message_id"] = msg.message_id
         
         elif context.user_data["login_step"] == "password":
@@ -433,12 +429,12 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         save_shared_session(session_data)
                         context.application.bot_data["shared_session"] = session_data
                     
-                    await context.bot.send_message(chat_id, f"✅ Logged in as {user_info.get('displayName', 'Unknown')}!")
+                    await context.bot.send_message(chat_id, i18n.t('auth.seerr_login_success', user_name=user_info.get('displayName', 'Unknown')), parse_mode="Markdown")
                 except Exception as e:
                     logger.error(f"Error fetching user info after login: {e}")
-                    await context.bot.send_message(chat_id, "❌ Login succeeded but failed to fetch user info.")
+                    await context.bot.send_message(chat_id, i18n.t('auth.seerr_login_success_user_failure'), parse_mode="Markdown")
             else:
-                await context.bot.send_message(chat_id, "❌ Login failed. Check your credentials.")
+                await context.bot.send_message(chat_id, i18n.t('auth.seerr_login_failure'), parse_mode="Markdown")
             
             context.user_data.pop("login_step", None)
             context.user_data.pop("login_email", None)
@@ -447,7 +443,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_settings_menu(update, context, is_admin=is_admin)
         return
 
-    await update.message.reply_text("I didn't understand that. Please use /start to see available commands.")
+    await update.message.reply_text(i18n.t('messages.unknown_command'))
 
 # ==============================================================================
 # USER MANAGEMENT MENU (Admin)
@@ -464,7 +460,7 @@ async def show_user_management_menu(update_or_query, context: ContextTypes.DEFAU
         message_thread_id = getattr(update_or_query.message, "message_thread_id", None)
 
     if not conf["users"].get(str(telegram_user_id), {}).get("is_admin", False):
-        await send_message(context, chat_id, "❌ Only admins can manage users.", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('admin.userman_only_admins_error'), message_thread_id=message_thread_id)
         return
 
     users_list = [
@@ -481,23 +477,23 @@ async def show_user_management_menu(update_or_query, context: ContextTypes.DEFAU
     total_users = len(users_list)
     current_users = users_list[offset:offset + page_size]
 
-    text = "👥 *User Management*\n\nSelect a user to manage:\n" if users_list else "👥 *User Management*\n\nNo users found."
+    text = i18n.t('admin.userman_body') if users_list else i18n.t('admin.userman_body_no_users')
     keyboard = []
     
     for u in current_users:
-        status = "🚫 Blocked" if u["is_blocked"] else "👑 Admin" if u["is_admin"] else "✅ User"
+        status = i18n.t('admin.userman_status_blocked') if u["is_blocked"] else i18n.t('admin.userman_status_admin') if u["is_admin"] else i18n.t('admin.userman_status_user')
         btn_txt = f"{u['username']} (ID: {u['telegram_id']}) - {status}"
         keyboard.append([InlineKeyboardButton(btn_txt, callback_data=f"manage_user_{u['telegram_id']}")])
 
-    keyboard.append([InlineKeyboardButton("➕ Create new Overseerr User", callback_data="create_user")])
+    keyboard.append([InlineKeyboardButton(i18n.t('admin.userman_create_user_btn'), callback_data="create_user")])
 
     nav_buttons = []
     if offset > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Back", callback_data=f"users_page_{offset - page_size}"))
+        nav_buttons.append(InlineKeyboardButton(i18n.t('messages.back_btn'), callback_data=f"users_page_{offset - page_size}"))
     if offset + page_size < total_users:
-        nav_buttons.append(InlineKeyboardButton("➡️ More", callback_data=f"users_page_{offset + page_size}"))
+        nav_buttons.append(InlineKeyboardButton(i18n.t('messages.more_btn'), callback_data=f"users_page_{offset + page_size}"))
     
-    nav_buttons.append(InlineKeyboardButton("⬅️ Back to Settings", callback_data="back_to_settings"))
+    nav_buttons.append(InlineKeyboardButton(i18n.t('admin.userman_back_to_settings_btn'), callback_data="back_to_settings"))
     if nav_buttons:
         keyboard.append(nav_buttons)
 
@@ -514,7 +510,7 @@ async def manage_specific_user(query: CallbackQuery, context: ContextTypes.DEFAU
     
     # Security check
     if not conf["users"].get(str(telegram_user_id), {}).get("is_admin", False):
-        await query.edit_message_text("❌ Only admins can manage users.")
+        await query.edit_message_text(i18n.t('admin.userman_only_admins_error'))
         return
 
     # Load target data
@@ -527,41 +523,31 @@ async def manage_specific_user(query: CallbackQuery, context: ContextTypes.DEFAU
 
     # Status Determination
     if is_blocked:
-        status_line = "🔴 *BLOCKED*"
+        status_line = i18n.t('admin.userman_status_blocked')
     elif is_admin:
-        status_line = "👑 *Administrator*"
+        status_line = i18n.t('admin.userman_status_admin')
     elif is_auth:
-        status_line = "🟢 *Authorized User*"
+        status_line = i18n.t('admin.userman_status_user')
     else:
-        status_line = "🟡 *Guest / Unauthorized*"
+        status_line = i18n.t('admin.userman_status_guest')
 
-    text = (
-        f"👤 *User Profile*\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"**Name:** {username}\n"
-        f"**Telegram ID:** `{target_telegram_id}`\n"
-        f"**Joined:** {created_raw}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"**Current Status:**\n"
-        f"{status_line}\n\n"
-        "👇 *Actions:*"
-    )
+    text = i18n.t('admin.userman_edit_body', username=username, telegram_id=target_telegram_id, joined_date=created_raw, user_status=status_line)
 
     keyboard = []
     
     # Logic: Toggle Block
     if is_blocked:
-        keyboard.append([InlineKeyboardButton("✅ Unblock User", callback_data=f"unblock_user_{target_telegram_id}")])
+        keyboard.append([InlineKeyboardButton(i18n.t('admin.userman_edit_action_unblock_btn'), callback_data=f"unblock_user_{target_telegram_id}")])
     else:
-        keyboard.append([InlineKeyboardButton("🚫 Block User", callback_data=f"block_user_{target_telegram_id}")])
+        keyboard.append([InlineKeyboardButton(i18n.t('admin.userman_edit_action_block_btn'), callback_data=f"block_user_{target_telegram_id}")])
     
     # Logic: Toggle Admin (prevent self-demotion if not careful, but logic handled in callback)
     if is_admin and target_telegram_id != str(telegram_user_id):
-        keyboard.append([InlineKeyboardButton("⬇️ Demote to User", callback_data=f"demote_user_{target_telegram_id}")])
+        keyboard.append([InlineKeyboardButton(i18n.t('admin.userman_edit_action_demote_btn'), callback_data=f"demote_user_{target_telegram_id}")])
     elif not is_admin and not is_blocked:
-        keyboard.append([InlineKeyboardButton("⬆️ Promote to Admin", callback_data=f"promote_user_{target_telegram_id}")])
+        keyboard.append([InlineKeyboardButton(i18n.t('admin.userman_edit_action_promote_btn'), callback_data=f"promote_user_{target_telegram_id}")])
     
-    keyboard.append([InlineKeyboardButton("🔙 Back to User List", callback_data="manage_users")])
+    keyboard.append([InlineKeyboardButton(i18n.t('admin.userman_edit_action_back_btn'), callback_data="manage_users")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=reply_markup)
@@ -592,13 +578,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 2. Prepare button for private chat auth
             bot_info = await context.bot.get_me()
             url = f"https://t.me/{bot_info.username}?start=auth"
-            kb = [[InlineKeyboardButton("🔐 Enter Password Privately", url=url)]]
+            kb = [[InlineKeyboardButton(i18n.t('auth.password_prompt_button'), url=url)]]
             
             # 3. Send the prompt to the group
             sent_msg = await send_message(
                 context, 
                 chat_id, 
-                "👋 *Welcome!* For security reasons, please click the button below to enter the password.", 
+                i18n.t('auth.password_prompt_group'), 
                 reply_markup=InlineKeyboardMarkup(kb),
                 message_thread_id=message_thread_id
             )
@@ -626,7 +612,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Send password prompt (Directly, bypassing send_message wrapper)
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="👋 *Welcome!* Please enter the bot’s password to get started:",
+                text=i18n.t('auth.password_prompt'),
                 parse_mode="Markdown"
             )
             context.user_data["awaiting_password"] = True
@@ -637,7 +623,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if the user is allowed to issue commands here (if already authorized)
     if not is_command_allowed(chat_id, message_thread_id, conf, telegram_user_id):
         if chat_id > 0 and conf["group_mode"]:
-             await context.bot.send_message(chat_id, "✅ You are authorized! Please use the bot in the group chat.")
+             await context.bot.send_message(chat_id, i18n.t('auth.login_success_groupmode'))
         return
 
     # --- 3. CONFIGURATION & INIT ---
@@ -708,11 +694,11 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
     is_admin = user.get("is_admin", False)
 
     if bot_settings.CURRENT_MODE == BotMode.SHARED and not is_admin:
-        await send_message(context, chat_id, "🔒 User settings are managed by the admin in Shared Mode.", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('admin.shared_mode_error'), message_thread_id=message_thread_id)
         return
 
     if PASSWORD and not user_is_authorized(telegram_user_id):
-        await send_message(context, chat_id, "🔒 *Access Denied*", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('auth.access_denied'), message_thread_id=message_thread_id)
         return
 
     # 3. Prepare Data for Dashboard
@@ -738,53 +724,41 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
 
     # Connection Status Logic
     if overseerr_id:
-        connection_status = "✅ Connected"
+        connection_status = i18n.t('controlpanel.connection_status_connected')
         # Anzeige: Name + Account-Typ
         user_display = f"*{overseerr_user_name}*{account_type_icon}"
     else:
-        connection_status = "❌ Not connected"
-        user_display = "_No user selected_"
+        connection_status = i18n.t('controlpanel.connection_status_not_connected')
+        user_display = i18n.t('controlpanel.user_display_no_user')
 
     # Group Mode Logic
-    if conf["group_mode"]:
-        group_status = "🟢 Active"
-        group_detail = f"(Chat ID: `{conf['primary_chat_id']['chat_id']}`)"
-    else:
-        group_status = "🔴 Disabled"
-        group_detail = ""
+    group_support = f"🟢 (ID: `{conf['primary_chat_id']['chat_id']}`)" if conf["group_mode"] else "🔴"
 
     # Mode Logic & Symbol
     mode_map = {
-        BotMode.NORMAL: ("🌟", "Individual Login"),
-        BotMode.API:    ("🔑", "API Key (No Login)"),
-        BotMode.SHARED: ("👥", "Shared Account")
+        BotMode.NORMAL: (i18n.t('controlpanel.mode_normal_symbol'), i18n.t('controlpanel.mode_normal')),
+        BotMode.API:    (i18n.t('controlpanel.mode_api_symbol'), i18n.t('controlpanel.mode_api')),
+        BotMode.SHARED: (i18n.t('controlpanel.mode_shared_symbol'), i18n.t('controlpanel.mode_shared'))
     }
     mode_sym, mode_desc = mode_map.get(bot_settings.CURRENT_MODE, ("❓", "Unknown"))
 
     # 4. Build the Dashboard Text
-    header = "⚙️ *Control Panel*" if is_admin else "⚙️ *User Settings*"
-    
-    text = f"{header}\n\n"
-    
-    # Section: Identity
-    text += (
-        "👤 *Active Identity*\n"
-        f"├ Account: {user_display}\n"
-        f"└ Status: {connection_status}\n\n"
+    text = i18n.t('controlpanel.body_user',
+                  user_display=user_display,
+                  connection_status=connection_status
     )
-
-    startup_notify_status = "🟢 On" if conf.get("send_startup_notification") else "🔴 Off"
 
     # Section: System (Admin only)
     if is_admin:
-        text += (
-            "🛠 *System Configuration*\n"
-            f"├ Bot Mode: {mode_sym} *{mode_desc}*\n"
-            f"├ Group Support: {group_status} {group_detail}\n"
-            f"└ Startup Notify: {startup_notify_status}\n\n" # <--- NEU
+        startup_notify = "🟢" if conf.get("send_startup_notification") else "🔴"
+        bot_mode = f"{mode_sym} *{mode_desc}*"
+        text = i18n.t('controlpanel.body_admin',
+                        user_display=user_display,
+                        connection_status=connection_status,
+                        bot_mode=bot_mode,
+                        group_support=group_support,
+                        startup_notify=startup_notify
         )
-
-    text += "_Select an action below:_"
 
     # 5. Build Buttons
     keyboard = []
@@ -792,35 +766,35 @@ async def show_settings_menu(update_or_query, context: ContextTypes.DEFAULT_TYPE
     # Row 1: Account Management
     acc_btns = []
     if bot_settings.CURRENT_MODE == BotMode.API:
-        acc_btns.append(InlineKeyboardButton("🔄 Switch User", callback_data="change_user"))
+        acc_btns.append(InlineKeyboardButton(i18n.t('controlpanel.change_user_btn'), callback_data="change_user"))
     elif bot_settings.CURRENT_MODE == BotMode.NORMAL:
         if context.user_data.get("session_data"):
-            acc_btns.append(InlineKeyboardButton("🔓 Logout", callback_data="logout"))
+            acc_btns.append(InlineKeyboardButton(i18n.t('controlpanel.logout_btn'), callback_data="logout"))
         else:
-            acc_btns.append(InlineKeyboardButton("🔑 Login", callback_data="login"))
+            acc_btns.append(InlineKeyboardButton(i18n.t('controlpanel.login_btn'), callback_data="login"))
     elif bot_settings.CURRENT_MODE == BotMode.SHARED and is_admin:
         if context.application.bot_data.get("shared_session"):
-            acc_btns.append(InlineKeyboardButton("🔓 Logout", callback_data="logout"))
+            acc_btns.append(InlineKeyboardButton(i18n.t('controlpanel.logout_btn'), callback_data="logout"))
         else:
-            acc_btns.append(InlineKeyboardButton("🔑 Login", callback_data="login"))
+            acc_btns.append(InlineKeyboardButton(i18n.t('controlpanel.login_btn'), callback_data="login"))
     if acc_btns:
         keyboard.append(acc_btns)
 
     # Row 2 & 3: Admin Tools
     if is_admin:
         keyboard.extend([
-            [InlineKeyboardButton("🔧 Change Operation Mode", callback_data="mode_select")],
-            [InlineKeyboardButton(f"👥 Toggle Group Mode ({'On' if conf['group_mode'] else 'Off'})", callback_data="toggle_group_mode")],
-            [InlineKeyboardButton(f"🤖 Toggle Startup Notify ({'On' if conf.get('send_startup_notification') else 'Off'})", callback_data="toggle_startup_notify")], # <--- NEUER BUTTON
-            [InlineKeyboardButton("👥 User Management", callback_data="manage_users")]
+            [InlineKeyboardButton(i18n.t('controlpanel.change_operation_mode_btn'), callback_data="mode_select")],
+            [InlineKeyboardButton(i18n.t('controlpanel.toggle_group_mode_on_btn') if conf['group_mode'] else i18n.t('controlpanel.toggle_group_mode_off_btn'), callback_data="toggle_group_mode")],
+            [InlineKeyboardButton(i18n.t('controlpanel.toggle_startup_notify_on_btn') if conf.get('send_startup_notification') else i18n.t('controlpanel.toggle_startup_notify_off_btn'), callback_data="toggle_startup_notify")], # <--- NEUER BUTTON
+            [InlineKeyboardButton(i18n.t('controlpanel.userman_btn'), callback_data="manage_users")]
         ])
 
     # Row 4: Notifications (Only if logged in)
     if overseerr_id:
-        keyboard.append([InlineKeyboardButton("🔔 Notification Settings", callback_data="manage_notifications")])
+        keyboard.append([InlineKeyboardButton(i18n.t('controlpanel.notifs_btn'), callback_data="manage_notifications")])
 
     # Footer
-    keyboard.append([InlineKeyboardButton("❌ Close Menu", callback_data="cancel_settings")])
+    keyboard.append([InlineKeyboardButton(i18n.t('controlpanel.close_menu_btn'), callback_data="cancel_settings")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -842,7 +816,7 @@ async def show_manage_notifications_menu(update_or_query, context: ContextTypes.
 
     overseerr_id = context.user_data.get("overseerr_telegram_user_id")
     if not overseerr_id:
-        msg = "⚠️ No Overseerr user selected."
+        msg = i18n.t('notifs.no_selected_user')
         if query: await query.edit_message_text(msg)
         else: await update_or_query.message.reply_text(msg)
         return
@@ -850,7 +824,7 @@ async def show_manage_notifications_menu(update_or_query, context: ContextTypes.
     # Fetch fresh settings
     settings = await get_user_notification_settings(overseerr_id)
     if not settings:
-        msg = "❌ Failed to retrieve settings from Overseerr."
+        msg = i18n.t('notifs.settings_retrieve_fail')
         if query: await query.edit_message_text(msg)
         else: await update_or_query.message.reply_text(msg)
         return
@@ -861,27 +835,24 @@ async def show_manage_notifications_menu(update_or_query, context: ContextTypes.
     is_silent = settings.get("telegramSendSilently", False)
 
     # Visual Indicators
-    status_icon = "🟢 Active" if is_enabled else "🔴 Inactive"
-    sound_icon = "🔕 Silent (No Sound)" if is_silent else "🔔 Standard (Sound On)"
+    status_icon = i18n.t('notifs.icon_active') if is_enabled else i18n.t('notifs.icon_inactive')
+    sound_icon = i18n.t('notifs.icon_silent') if is_silent else i18n.t('notifs.icon_standard')
     
     overseerr_name = context.user_data.get("overseerr_user_name", "User")
-
-    text = (
-        f"🔔 *Notification Preferences*\n"
-        f"for Overseerr User: *{overseerr_name}*\n\n"
-        f"📡 *Status:* {status_icon}\n"
-        f"🔊 *Mode:* {sound_icon}\n\n"
-        "_Here you can decide if this user receives Telegram messages from Overseerr._"
+    text = i18n.t('notifs.notifs_body',
+                  user_name=overseerr_name,
+                  status_icon=status_icon,
+                  sound_icon=sound_icon
     )
 
     # Dynamic Button Labels
-    btn_toggle = "🛑 Disable Notifications" if is_enabled else "✅ Enable Notifications"
-    btn_silent = "🔊 Turn Sound ON" if is_silent else "🔕 Turn Sound OFF"
+    btn_toggle = i18n.t('notifs.disable_notifs_btn') if is_enabled else i18n.t('notifs.enable_notifs_btn')
+    btn_silent = i18n.t('notifs.sound_on_btn') if is_silent else i18n.t('notifs.sound_off_btn')
 
     keyboard = [
         [InlineKeyboardButton(btn_toggle, callback_data="toggle_user_notifications")],
         [InlineKeyboardButton(btn_silent, callback_data="toggle_user_silent")],
-        [InlineKeyboardButton("🔙 Back", callback_data="back_to_settings")]
+        [InlineKeyboardButton(i18n.t('messages.back_btn'), callback_data="back_to_settings")]
     ]
     
     markup = InlineKeyboardMarkup(keyboard)
@@ -906,7 +877,7 @@ async def toggle_user_notifications(query: CallbackQuery, context: ContextTypes.
     if success:
         await show_manage_notifications_menu(query, context)
     else:
-        await query.edit_message_text("❌ Failed to update settings.")
+        await query.edit_message_text(i18n.t('notifs.settings_update_fail'))
 
 async def toggle_user_silent(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     overseerr_id = context.user_data.get("overseerr_telegram_user_id")
@@ -921,7 +892,7 @@ async def toggle_user_silent(query: CallbackQuery, context: ContextTypes.DEFAULT
     if success:
         await show_manage_notifications_menu(query, context)
     else:
-        await query.edit_message_text("❌ Failed to update settings.")
+        await query.edit_message_text(i18n.t('notifs.settings_update_fail'))
 
 
 # ==============================================================================
@@ -937,28 +908,28 @@ async def check_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if PASSWORD and not user_is_authorized(telegram_user_id):
-        await send_message(context, chat_id, "Please enter password first (/start).", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('check.error_auth'), message_thread_id=message_thread_id)
         return
 
     if "overseerr_telegram_user_id" not in context.user_data:
-        await send_message(context, chat_id, "👤 *No user configured.* check /settings.", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('check.error_no_user'), message_thread_id=message_thread_id)
         await show_settings_menu(update, context)
         return
 
     if not context.args:
-        await send_message(context, chat_id, "🔍 Usage: `/check <title>`", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('check.usage'), message_thread_id=message_thread_id)
         return
 
     media_name = " ".join(context.args)
 
     search_data = await search_media(media_name)
     if not search_data:
-        await send_message(context, chat_id, "❌ Search Error.", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('check.error_search'), message_thread_id=message_thread_id)
         return
 
     results = search_data.get("results", [])
     if not results:
-        await send_message(context, chat_id, f"🔍 No results for '{media_name}'.", message_thread_id=message_thread_id)
+        await send_message(context, chat_id, i18n.t('check.error_no_results', media_name=media_name), message_thread_id=message_thread_id)
         return
 
     processed = process_search_results(results)
@@ -978,17 +949,17 @@ async def display_results_with_buttons(update_or_query, context, results, offset
     nav_btns = []
     
     if offset > 0:
-        nav_btns.append(InlineKeyboardButton("⬅️ Back", callback_data=f"page_{offset - 5}"))
+        nav_btns.append(InlineKeyboardButton(i18n.t('messages.back_btn'), callback_data=f"page_{offset - 5}"))
     
-    nav_btns.append(InlineKeyboardButton("❌ Cancel", callback_data="cancel_search"))
+    nav_btns.append(InlineKeyboardButton(i18n.t('messages.cancel_btn'), callback_data="cancel_search"))
     
     if offset + 5 < total:
-        nav_btns.append(InlineKeyboardButton("➡️ More", callback_data=f"page_{offset + 5}"))
+        nav_btns.append(InlineKeyboardButton(i18n.t('messages.more_btn'), callback_data=f"page_{offset + 5}"))
 
     if nav_btns: keyboard.append(nav_btns)
 
     markup = InlineKeyboardMarkup(keyboard)
-    text = "Please select a result:"
+    text = i18n.t('check.select_result')
 
     if new_message:
         return await context.bot.send_message(chat_id=update_or_query.message.chat_id, text=text, reply_markup=markup)
@@ -1030,29 +1001,29 @@ async def process_user_selection(update_or_query, context, result, edit_message=
     req_btns = []
     
     if can_req(status_hd):
-        req_btns.append(InlineKeyboardButton("📥 1080p", callback_data=f"confirm_1080p_{result['id']}"))
+        req_btns.append(InlineKeyboardButton(i18n.t('check.library_1080p_label'), callback_data=f"confirm_1080p_{result['id']}"))
     
     if has_4k and can_req(status_4k):
-        req_btns.append(InlineKeyboardButton("📥 4K", callback_data=f"confirm_4k_{result['id']}"))
+        req_btns.append(InlineKeyboardButton(i18n.t('check.library_4k_label'), callback_data=f"confirm_4k_{result['id']}"))
         
     if has_4k and can_req(status_hd) and can_req(status_4k):
-        req_btns.append(InlineKeyboardButton("📥 Both", callback_data=f"confirm_both_{result['id']}"))
+        req_btns.append(InlineKeyboardButton(i18n.t('check.library_both_label'), callback_data=f"confirm_both_{result['id']}"))
 
     if req_btns: keyboard.append(req_btns)
 
     if (status_hd in REQUESTED or status_4k in REQUESTED) and result.get("overseerr_id"):
-        keyboard.append([InlineKeyboardButton("🛠 Report Issue", callback_data=f"report_{result.get('overseerr_id')}")])
+        keyboard.append([InlineKeyboardButton(i18n.t('check.report_btn'), callback_data=f"report_{result.get('overseerr_id')}")])
 
-    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back_to_results")])
+    keyboard.append([InlineKeyboardButton(i18n.t('messages.back_btn'), callback_data="back_to_results")])
 
     # Helper function for status text with emojis
     def get_status_text(code):
         try:
             status = MediaStatus(code)
-            if status == MediaStatus.AVAILABLE: return "Available ✅"
-            if status == MediaStatus.PARTIALLY_AVAILABLE: return "Partially available ⏳"
-            if status == MediaStatus.PROCESSING: return "Processing ⏳"
-            if status == MediaStatus.PENDING: return "Pending ⏳"
+            if status == MediaStatus.AVAILABLE: return i18n.t('check.media_status_available')
+            if status == MediaStatus.PARTIALLY_AVAILABLE: return i18n.t('check.media_status_partially_available')
+            if status == MediaStatus.PROCESSING: return i18n.t('check.media_status_processing')
+            if status == MediaStatus.PENDING: return i18n.t('check.media_status_pending')
             return ""
         except ValueError:
             return ""
@@ -1066,12 +1037,12 @@ async def process_user_selection(update_or_query, context, result, edit_message=
     # In this case, labeling the standard status as "1080p" is misleading because the content could be 4K.
     # So we change the label to a generic "Status".
     # If 4K status is KNOWN, we keep the distinction "1080p" vs "4K".
-    label_hd = "1080p"
+    label_hd = i18n.t('check.library_1080p_label')
     if status_4k == MediaStatus.UNKNOWN:
-        label_hd = "Status"
+        label_hd = i18n.t('check.library_only_1080p_label')
 
     if txt_hd: stat_txt += f"\n• {label_hd}: {txt_hd}"
-    if txt_4k: stat_txt += f"\n• 4K: {txt_4k}"
+    if txt_4k: stat_txt += f"\n• {i18n.t('check.library_4k_label')}: {txt_4k}"
     
     msg_text = f"*{title} ({year})*\n\n{desc}\n{stat_txt}"
     markup = InlineKeyboardMarkup(keyboard)
@@ -1109,33 +1080,13 @@ async def mode_select(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     # Link to the specific wiki section
     wiki_url = "https://github.com/LetsGoDude/Overseerr-Telegram-Bot/wiki#operation-modes"
 
-    text = (
-        "🔧 *System Operation Mode*\n\n"
-        
-        "🌟 *Normal Mode*\n"
-        "Each user logs in with their own Overseerr credentials. Requests are made using individual session cookies. "
-        "If a session expires, the bot tries to auto-login. If it fails, users must log in again.\n\n"
-
-        "🔑 *API Mode*\n"
-        "All requests are sent using the API key, so users **don't need to log in**. "
-        "Instead, they can select a user from the list, and the bot will process requests as that user.\n"
-        "⚠️ _Limitations:_\n"
-        "• All media requests are approved automatically.\n"
-        "• Issue reports are sent under the admin’s account.\n"
-        "• No individual login credentials.\n\n"
-
-        "👥 *Shared User Mode*\n"
-        "A single Overseerr account is shared for all users. The admin logs in once, and all user requests are sent through this shared account. "
-        "Normal users cannot change any settings.\n\n"
-
-        f"📖 [Read Wiki for details]({wiki_url})"
-    )
+    text = i18n.t('operation_mode.body', wiki_url=wiki_url)
 
     keyboard = [
-        [InlineKeyboardButton("🌟 Activate Normal Mode", callback_data="activate_normal")],
-        [InlineKeyboardButton("🔑 Activate API Mode", callback_data="activate_api")],
-        [InlineKeyboardButton("👥 Activate Shared Mode", callback_data="activate_shared")],
-        [InlineKeyboardButton("🔙 Back to Settings", callback_data="back_to_settings")]
+        [InlineKeyboardButton(i18n.t('operation_mode.normal_btn'), callback_data="activate_normal")],
+        [InlineKeyboardButton(i18n.t('operation_mode.api_btn'), callback_data="activate_api")],
+        [InlineKeyboardButton(i18n.t('operation_mode.shared_btn'), callback_data="activate_shared")],
+        [InlineKeyboardButton(i18n.t('operation_mode.back_btn'), callback_data="back_to_settings")]
     ]
 
     await query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
@@ -1149,7 +1100,7 @@ async def handle_login_method(query: CallbackQuery, context: ContextTypes.DEFAUL
     if method == "login_method_email":
         # Standard Email Flow
         context.user_data["login_step"] = "email"
-        msg = await context.bot.send_message(chat_id, "📧 Please enter your **Overseerr Email** address:", parse_mode="Markdown")
+        msg = await context.bot.send_message(chat_id, i18n.t('auth.email_prompt'), parse_mode="Markdown")
         context.user_data["login_message_id"] = msg.message_id
         await query.message.delete()
 
@@ -1157,24 +1108,19 @@ async def handle_login_method(query: CallbackQuery, context: ContextTypes.DEFAUL
         # 1. Request PIN from Plex
         pin_id, code, url = await get_plex_auth_pin()
         if not pin_id:
-            await query.edit_message_text("❌ Could not connect to Plex.tv. Please try again later.")
+            await query.edit_message_text(i18n.t('auth.plex_error'))
             return
 
         # 2. Store PIN ID to verify later
         context.user_data["plex_pin_id"] = pin_id
         
         # 3. Show instructions
-        text = (
-            "▶️ *Plex Login*\n\n"
-            "1. Click the link button below.\n"
-            "2. Sign in with Plex and **approve** the request.\n"
-            "3. Return here and click **'✅ I have logged in'**."
-        )
+        text = i18n.t('auth.plex_instructions')
         
         kb = [
-            [InlineKeyboardButton("🔗 Login via Plex", url=url)],
-            [InlineKeyboardButton("✅ I have logged in", callback_data="check_plex_login")],
-            [InlineKeyboardButton("❌ Cancel", callback_data="cancel_settings")]
+            [InlineKeyboardButton(i18n.t('auth.plex_auth_btn'), url=url)],
+            [InlineKeyboardButton(i18n.t('auth.plex_logged_in_btn'), callback_data="check_plex_login")],
+            [InlineKeyboardButton(i18n.t('messages.cancel_btn'), callback_data="cancel_settings")]
         ]
         
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
@@ -1184,7 +1130,7 @@ async def check_plex_login_callback(query: CallbackQuery, context: ContextTypes.
     pin_id = context.user_data.get("plex_pin_id")
     
     if not pin_id:
-        await query.answer("Session expired. Please start over.")
+        await query.answer(i18n.t('auth.session_expired'))
         await start_login(query, context)
         return
 
@@ -1248,7 +1194,7 @@ async def check_plex_login_callback(query: CallbackQuery, context: ContextTypes.
             logger.error(f"Plex Login Success but Info Fetch failed: {e}")
             await query.edit_message_text("❌ Login worked, but failed to fetch user data from Overseerr.")
     else:
-        await query.edit_message_text("❌ Overseerr rejected the Plex Token. \nIs this Plex user imported into Overseerr?")
+        await query.edit_message_text(i18n.t('auth.plex_rejected'))
 
 
 # ==============================================================================
@@ -1403,7 +1349,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             clear_shared_session()
             context.application.bot_data.pop("shared_session", None)
             
-        await query.edit_message_text("✅ Logged out!")
+        await query.edit_message_text(i18n.t('auth.logout_success'))
         return
     
     # 6. Change User
@@ -1489,23 +1435,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if req_type in ["4k", "both"]:
             succ_4k, msg_4k = await request_media(mid, res["mediaType"], req_by, True, cookie)
-
-        txt = f"📥 *Request Sent to Overseerr*\n"
-        txt += f"🎬 *{res['title']}* ({res['year']})\n\n"
         
         # Determine Label (Same logic as in process_user_selection)
         # We check the cached result 'res' for status_4k
-        label_hd = "1080p"
+        label_hd = i18n.t('check.library_1080p_label')
         if res.get("status_4k", 1) == MediaStatus.UNKNOWN:
-            label_hd = "Status"
+            label_hd = i18n.t('check.library_only_1080p_label')
         
+        statuses = ""
         if succ_hd is not None:
-            status = "✅ Successfully requested!" if succ_hd else f"❌ {msg_hd}"
-            txt += f"• *{label_hd}:* {status}\n"
+            status = i18n.t('check.request_status_success') if succ_hd else i18n.t('check.request_status_error', error_msg=msg_hd)
+            statuses += f"• *{label_hd}:* {status}\n"
             
         if succ_4k is not None:
-            status = "✅ Successfully requested!" if succ_4k else f"❌ {msg_4k}"
-            txt += f"• *4K:* {status}\n"
+            status = i18n.t('check.request_status_success') if succ_4k else i18n.t('check.request_status_error', error_msg=msg_4k)
+            statuses += f"• *{i18n.t('check.library_4k_label')}:* {status}\n"
+        
+        txt = i18n.t('check.request_sent_body', title=res['title'], year=res['year'], request_statuses=status)
         # -------------------------------
         
         await query.edit_message_caption(txt, parse_mode="Markdown")
@@ -1522,8 +1468,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = []
             for k,v in ISSUE_TYPES.items():
                 kb.append([InlineKeyboardButton(v, callback_data=f"issue_type_{k}")])
-            kb.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_issue")])
-            await query.edit_message_caption(f"Select issue type for *{res['title']}*:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+            kb.append([InlineKeyboardButton(i18n.t('messages.cancel_btn'), callback_data="cancel_issue")])
+            await query.edit_message_caption(i18n.t('reports.issue_type_prompt', media_title=res['title']), parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
         return
         
     elif data.startswith("issue_type_"):
@@ -1532,9 +1478,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['reporting_issue'] = {'issue_type': tid, 'issue_type_name': tname}
         
         await query.edit_message_caption(
-            f"🛠 You selected: *{tname}*\nPlease type your issue description now:",
+            i18n.t('reports.issue_desc_prompt', issue_type=tname),
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="cancel_issue")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(i18n.t('messages.cancel_btn'), callback_data="cancel_issue")]])
         )
         return
 
@@ -1612,7 +1558,7 @@ async def post_init(application: Application):
         try:
             await application.bot.send_message(
                 chat_id=admin_id,
-                text=f"🤖 *System Online*\nOverseerr Bot v{VERSION} is up and running!",
+                text=i18n.t('messages.system_online', version=VERSION),
                 parse_mode="Markdown"
             )
             logger.info("Startup notification sent to admin.")

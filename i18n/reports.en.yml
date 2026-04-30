@@ -1,0 +1,13 @@
+en:
+  issue_type_prompt: |
+    Select issue type for *%{media_title}*:
+  issue_desc_prompt: |
+    🛠 You selected: *%{issue_type}*
+    Please type your issue description now:
+  
+  issue_report_error: An error occurred. Please try reporting the issue again.
+  issue_report_final: |
+    Reported by %{user_name})
+    %{issue_description}
+  issue_report_success: ✅ Thank you! Issue with *%{media_title}* reported.
+  issue_report_failure: ❌ Failed to report issue with *%{media_title}*.

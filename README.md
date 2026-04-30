@@ -20,6 +20,7 @@ With **Version 4.0.0**, the bot has been rebuilt for high performance (Async) an
 - **Notification Management**: Customize Telegram notifications for Overseerr events (e.g., request approvals, media availability).
 - **Admin Dashboard**: A completely redesigned `/settings` menu allows admins to switch operation modes, manage users, and toggle system notifications.
 - **Smart Group Mode**: Use the bot safely in group chats.
+- **Localization and custom messages**: Supports sending messages in a specified language, and allows custom bot responses via override files.
 
 > [!Note]
 > The language of media titles and descriptions matches the language setting configured in Overseerr (e.g., German titles if Overseerr is set to German), while the bot's interface remains in English.
@@ -45,6 +46,7 @@ services:
       OVERSEERR_API_KEY: "your_overseerr_api_key"
       TELEGRAM_TOKEN: "your_telegram_token"
       PASSWORD: "your_password"
+      LOCALE: "en" # Default: "en". Needs to have corrsponding locale files in "i18n/" or "data/i18n/"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -137,6 +139,9 @@ Group Mode allows you to restrict the bot to a specific Telegram group or thread
 
 - **Why don't I see "Manage Notifications"?**  
   You must be logged in (Normal/Shared Mode) or have a user selected (API Mode) to configure notifications.
+
+- **How do I change the bot responses?**  
+  Copy the .yml file containing the text you want to edit into a new directory inside your `data/i18n/` directory and modify the values. The bot will use your custom file once rebooted.
 
 ---
 

@@ -1,0 +1,34 @@
+en:
+  usage: |
+    🔍 Usage: `/check <title>`
+  
+  error_no_user: 👤 *No user configured.* check /settings.
+  error_no_results: |
+    🔍 No results for '%{media_name}'.
+  error_search: ❌ Search Error.
+  error_auth: Please enter password first (/start).
+
+  select_result: |
+    Please select a result:
+
+  # These are just labels and can be changed to anything depending on the actual content
+  library_1080p_label: 📥 1080p
+  library_4k_label: 📥 4K
+  library_both_label: 📥 Both
+  # label used when there's only one 1080p library
+  library_only_1080p_label: Status
+  
+  report_btn: 🛠 Report Issue
+
+  media_status_available: Available ✅
+  media_status_partially_available: Partially available ⏳
+  media_status_processing: Processing ⏳
+  media_status_pending: Pending ⏳
+
+  request_status_success: ✅ Successfully requested!
+  request_status_error: ❌ %{error_msg}
+  request_sent_body: |
+    📥 *Request Sent to Overseerr*
+    🎬 *%{title}* (%{year})
+
+    %{request_statuses}

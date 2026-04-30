@@ -1,0 +1,22 @@
+en:
+  icon_active: 🟢 Active
+  icon_inactive: 🔴 Inactive
+  icon_silent: 🔕 Silent (No Sound)
+  icon_standard: 🔔 Standard (Sound On)
+  
+  no_selected_user: ⚠️ No Seerr user selected.
+  settings_retrieve_fail: ❌ Failed to retrieve settings from Seerr.
+  settings_update_fail: ❌ Failed to update settings.
+
+  notifs_body: |
+        🔔 *Notification Preferences*
+        for Seerr User: *{user_name}*
+
+        📡 *Status:* {status_icon}
+        🔊 *Mode:* {sound_icon}
+        
+        _Here you can decide if this user receives Telegram messages from Seerr._
+  enable_notifs_btn: ✅ Enable Notifications
+  disable_notifs_btn: 🛑 Disable Notifications
+  sound_on_btn: 🔊 Turn Sound ON
+  sound_off_btn: 🔕 Turn Sound OFF

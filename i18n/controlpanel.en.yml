@@ -1,0 +1,49 @@
+en:
+  # Values used in message
+  mode_normal: Individual Login
+  mode_api: API Key (No Login)
+  mode_shared: Shared Account
+
+  mode_normal_symbol: 🌟
+  mode_api_symbol: 🔑
+  mode_shared_symbol: 👥
+
+  connection_status_connected: ✅ Connected
+  connection_status_not_connected: ❌ Not connected
+  user_display_no_user: _No user selected_
+  
+  # Message built with above values
+  body_admin: |
+    ⚙️ *Control Panel*
+
+    👤 *Active Identity*
+    ├ Account: %{user_display}
+    └ Status: %{connection_status}
+
+    _Select an action below:_
+  body_user: |
+    ⚙️ *User Settings*
+
+    👤 *Active Identity*
+    ├ Account: %{user_display}
+    └ Status: %{connection_status}
+
+    🛠 *System Configuration*
+    ├ Bot Mode: %{bot_mode}
+    ├ Group Support: %{group_support}
+    └ Startup Notify: %{startup_notify}
+
+    _Select an action below:_
+  
+  # Buttons below message
+  change_user_btn: 🔄 Switch User
+  logout_btn: 🔓 Logout
+  login_btn: 🔑 Login
+  change_operation_mode_btn: 🔧 Change Operation Mode
+  toggle_group_mode_on_btn: 👥 Toggle Group Mode On
+  toggle_group_mode_off_btn: 👥 Toggle Group Mode Off
+  toggle_startup_notify_on_btn: 🤖 Toggle Startup Notify On
+  toggle_startup_notify_off_btn: 🤖 Toggle Startup Notify Off
+  userman_btn: 👥 User Management
+  notifs_btn: 🔔 Notification Settings
+  close_menu_btn: ❌ Close Menu

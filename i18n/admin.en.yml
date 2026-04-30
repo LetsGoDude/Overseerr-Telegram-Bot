@@ -1,0 +1,34 @@
+en:
+  shared_mode_error: 🔒 User settings are managed by the admin in Shared Mode.
+
+  userman_status_blocked: 🚫 Blocked
+  userman_status_admin: 👑 Admin
+  userman_status_user: ✅ User
+  userman_status_guest: 🟡 *Guest / Unauthorized*
+  
+  userman_only_admins_error: ❌ Only admins can manage users.
+  userman_body: |
+    👥 *User Management*
+    Select a user to manage:
+  userman_body_no_users: |
+    👥 *User Management*
+    No users found.
+  userman_create_user_btn: ➕ Create new Seerr User
+  userman_back_to_settings_btn: ⬅️ Back to Settings
+
+  userman_edit_body: |
+    👤 *User Profile*
+    ━━━━━━━━━━━━━━━━━━
+    **Name:** %{username}
+    **Telegram ID:** `%{telegram_id}`
+    **Joined:** %{joined_date}
+    ━━━━━━━━━━━━━━━━━━
+    **Current Status:**
+    %{user_status}
+    
+    👇 *Actions:*
+  userman_edit_action_unblock_btn: ✅ Unblock User
+  userman_edit_action_block_btn: 🚫 Block User
+  userman_edit_action_demote_btn: ⬇️ Demote to User
+  userman_edit_action_promote_btn: ⬆️ Promote to Admin
+  userman_edit_action_back_btn: 🔙 Back to User List

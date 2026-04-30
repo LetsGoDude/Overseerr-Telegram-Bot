@@ -1,0 +1,26 @@
+en:
+  body: |
+    🔧 *System Operation Mode*
+        
+    🌟 *Normal Mode*
+    Each user logs in with their own Overseerr credentials. Requests are made using individual session cookies.
+    If a session expires, the bot tries to auto-login. If it fails, users must log in again.
+
+    🔑 *API Mode*
+    All requests are sent using the API key, so users **don't need to log in**.
+    Instead, they can select a user from the list, and the bot will process requests as that user.
+    ⚠️ _Limitations:_
+    • All media requests are approved automatically.
+    • Issue reports are sent under the admin's account.
+    • No individual login credentials.
+
+    👥 *Shared User Mode*
+    A single Overseerr account is shared for all users. The admin logs in once, and all user requests are sent through this shared account.
+    Normal users cannot change any settings.
+
+    📖 [Read Wiki for details](%{wiki_url})
+
+  normal_btn: 🌟 Activate Normal Mode
+  api_btn: 🔑 Activate API Mode
+  shared_btn: 👥 Activate Shared Mode
+  back_btn: 🔙 Back to Settings

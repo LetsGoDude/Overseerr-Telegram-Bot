@@ -1,0 +1,55 @@
+en:
+  access_denied: 🔒 *Access Denied*
+  session_expired: Session expired. Please start over.
+
+  # Auth messages for the bot itself
+  password_prompt: |
+    👋 *Welcome!* Please enter the bot's password to get started:
+  password_prompt_group: 👋 *Welcome!* For security reasons, please click the button below to enter the password.
+  password_prompt_button: 🔐 Enter Password Privately
+
+  # Auth messages for choosing Seerr login method
+  login_button: 🔑 Login
+  login_method_desc: |
+    🔑 *Login Method*
+    How do you want to sign in to Seerr?
+  login_email_password_btn: 📧 Email / Password
+  login_plex_btn: ▶️ Plex Account
+
+  login_success_private: |
+    ✅ *Access granted!* You are now authorized.
+    🔙 Please return to the group chat to start requesting.
+  login_success_group: |
+    👋 *%{user_name}* has joined the party and is now authorized!
+  login_failure: |
+    ❌ *Oops!* That’s not the right password. Try again:
+  login_success_groupmode:
+    ✅ You are authorized! Please use the bot in the group chat.
+
+  logout_success: ✅ Logged out!
+
+  # Seerr Login Steps
+  seerr_password_prompt: |
+    Please enter your Seerr password:
+  seerr_login_success: |
+    ✅ Logged in as %{user_name}!
+  seerr_login_failure: ❌ Login failed. Check your credentials.
+  seerr_login_success_user_failure: ❌ Login succeeded but failed to fetch user info.
+
+  # Email login
+  email_prompt: |
+    📧 Please enter your **Seerr Email** address:
+  
+  # Plex login
+  plex_error: ❌ Could not connect to Plex.tv. Please try again later.
+  plex_instructions: |
+    ▶️ *Plex Login*
+    
+    1. Click the link button below.
+    2. Sign in with Plex and **approve** the request.
+    3. Return here and click **'✅ I have logged in'**.
+  plex_auth_btn: 🔗 Login via Plex
+  plex_logged_in_btn: ✅ I have logged in
+  plex_rejected: |
+    ❌ Overseerr rejected the Plex Token.
+    Is this Plex user imported into Seerr?

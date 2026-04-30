@@ -23,14 +23,16 @@ API_URL = None
 API_KEY = None
 TOKEN   = None
 PASS    = ""
+LOC     = "en"
 
 # Try loading from config.py
 try:
-    from config import OVERSEERR_API_URL, OVERSEERR_API_KEY, TELEGRAM_TOKEN, PASSWORD
+    from config import OVERSEERR_API_URL, OVERSEERR_API_KEY, TELEGRAM_TOKEN, PASSWORD, LOCALE
     API_URL = OVERSEERR_API_URL
     API_KEY = OVERSEERR_API_KEY
     TOKEN = TELEGRAM_TOKEN
     PASS = PASSWORD
+    LOC = LOCALE
     logger.info("Credentials loaded from config.py")
 except ImportError:
     # This is fine if running purely on ENV vars (e.g. Docker without volume mount)
@@ -41,6 +43,7 @@ OVERSEERR_API_URL = os.environ.get("OVERSEERR_API_URL", API_URL)
 OVERSEERR_API_KEY = os.environ.get("OVERSEERR_API_KEY", API_KEY)
 TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_TOKEN", TOKEN)
 PASSWORD          = os.environ.get("PASSWORD", PASS)
+APP_LOCALE        = os.environ.get("LOCALE", LOC)
 
 # Validation
 if not all([OVERSEERR_API_URL, OVERSEERR_API_KEY, TELEGRAM_TOKEN]):
@@ -53,6 +56,8 @@ VERSION = "4.0.0"
 BUILD = "2025.12.14.310"
 
 DATA_DIR = "data"
+I18N_DIR = "i18n"
+I18N_OVERRIDE_DIR = f"{DATA_DIR}/i18n"
 CONFIG_FILE = f"{DATA_DIR}/bot_config.json"
 USER_SELECTION_FILE = f"{DATA_DIR}/api_mode_selections.json"
 USER_SESSIONS_FILE = f"{DATA_DIR}/normal_mode_sessions.json"

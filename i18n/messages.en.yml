@@ -1,0 +1,25 @@
+en:
+  # Generic nav/confirmation button labels
+  cancel_btn: ❌ Cancel
+  back_btn: ⬅️ Back
+  more_btn: ➡️ More
+
+  system_online: |
+    🤖 *System Online*
+    Overseerr Bot v%{version} is up and running!
+
+  version_available: 🔔 New version (%{version}) available!
+  welcome_message: |
+    👋 *Welcome to the Overseerr Telegram Bot!* v%{current_version}%{newer_version}
+    
+    🎬 *What I can do:*
+     - 🔍 Search movies & TV shows
+     - 📊 Check availability
+     - 🎫 Request new titles
+     - 🛠 Report issues
+
+    💡 *How to start:* Type `/check <title>`
+    _Example: `/check Venom`_
+
+    You can also configure your preferences with [/settings].
+  unknown_command: I didn't understand that. Please use /start to see available commands.

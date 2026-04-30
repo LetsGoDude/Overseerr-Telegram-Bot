@@ -1,2 +1,3 @@
 requests
 python-telegram-bot[job-queue]
+i18nice[YAML]
